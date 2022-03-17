@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <unordered_map> 
 #include <vector>
+#include <set>
 
 #include "llvm/IR/PassManager.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -36,9 +37,12 @@ namespace {
           // iterate through every Function in the Module
           std::unordered_map<Function*, std::vector<Function*>> calls;
           std::vector<Function*> vec;
+          std::set<Function*> seen;
           std::string prefix = "std::";    // for finding STL functions
+
           for(auto& Func : M){
             StringRef name = Func.getName();
+            Function* func_ptr = &Func;
             // name.str() -> get contents of StringRef object as a string
             if(!name.str().empty()){
               std::string demangled_name = demangle(name.str());
@@ -54,14 +58,14 @@ namespace {
                     // Else, if CB is a direct function call then DirectInvoc will not be null
                     auto DirectInvoc = CB->getCalledFunction();
                     if(nullptr == DirectInvoc) { continue; }
-                    vec.push_back(DirectInvoc);
+                    calls[func_ptr].push_back(DirectInvoc);
                   }
                 } 
               }   
             }
           }   // end Module loop
 
-            print(vec);
+            // print_native(vec);
             // delete_chain(vec);
             return true;
         }   // end runOnModule()
@@ -96,8 +100,15 @@ namespace {
             return "";
         }   // end demangle()
 
-        void print(std::vector<Function*> vec){
-          errs() << "Calling print() " << "\n";
+        void print_native(std::vector<Function*> vec){
+          errs() << "Calling print_native() " << "\n";
+          for(auto F : vec){
+            errs() << "Function: " << F->getName() << "\n";
+          }
+        }
+
+        void print_demangled(std::vector<Function*> vec){
+          errs() << "Calling print_demangled() " << "\n";
           for(auto F : vec){
             StringRef name = F->getName();
             std::string demangled = demangle(name.str());
