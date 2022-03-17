@@ -100,6 +100,11 @@ namespace {
             return "";
         }   // end demangle()
 
+        void print_native_map(std::unordered_map<Function*,std::vector<Function*> map){
+          errs() << "Calling print_native_map()"
+          
+        }
+
         void print_native(std::vector<Function*> vec){
           errs() << "Calling print_native() " << "\n";
           for(auto F : vec){
