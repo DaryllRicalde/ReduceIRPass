@@ -7,6 +7,7 @@
 #include <unordered_map> 
 #include <vector>
 #include <set>
+#include <stack>
 
 #include "llvm/IR/PassManager.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -37,7 +38,6 @@ namespace {
           // iterate through every Function in the Module
           std::unordered_map<Function*, std::vector<Function*>> calls;
           std::vector<Function*> vec;
-          std::set<Function*> seen;
           std::string prefix = "std::";    // for finding STL functions
 
           for(auto& Func : M){
@@ -50,22 +50,45 @@ namespace {
               if(demangled_name.rfind(prefix,0) == 0) {  // check if demangled name starts with "std::" prefix indicating a STL function
                 for(auto &BB : Func){
                   for(auto &Ins : BB){
+
+                    std::stack<Function*> stack;    // add called functions here until we reach a Function with no more call Instruction
+                    std::set<Function*> seen;
+
+
                     // check which other Functions this Function calls
                     // If this is a call instruction, then CB will be not null
                     auto *CB = dyn_cast<CallBase>(&Ins);
                     if(nullptr == CB) { continue; }
 
                     // Else, if CB is a direct function call then DirectInvoc will not be null
-                    auto DirectInvoc = CB->getCalledFunction();
-                    if(nullptr == DirectInvoc) { continue; }
-                    calls[func_ptr].push_back(DirectInvoc);
+                    auto called_function = CB->getCalledFunction();
+                    if(nullptr == called_function) { continue; }
+
+                    stack.push(called_function);
+                    while(!stack.empty()){
+                      Function* target_function = stack.top();
+                      seen.insert(target_function);
+                      stack.pop();
+                      std::vector<Function*> neighbours = get_neighbours(*target_function);
+                      for(auto F : neighbours){
+                        if(!seen.count(F)){
+                          stack.push(F);
+                        }
+                      }
+                    }
+
+                    // at this point, every function that was in the call chain should be in seen
+                    for(auto func : seen){
+                      func->replaceAllUsesWith(UndefValue::get(func->getType()));
+                      func->eraseFromParent();                      
+                    }
+
                   }
                 } 
               }   
             }
           }   // end Module loop
-
-            // print_native(vec);
+            // print_native_map(calls);
             // delete_chain(vec);
             return true;
         }   // end runOnModule()
@@ -76,6 +99,23 @@ namespace {
             F->replaceAllUsesWith(UndefValue::get(F->getType()));
             F->eraseFromParent();
           }
+        }
+
+        // get the Functions called by this Function F
+        std::vector<Function*> get_neighbours(Function &F){
+          std::vector<Function*> res;
+          for(auto &BB: F){
+            for(auto &I : BB){
+              auto *CB = dyn_cast<CallBase>(&I);
+              if(nullptr == CB) { continue; }
+
+              // Else, if CB is a direct function call then DirectInvoc will not be null
+              auto called_function = CB->getCalledFunction();
+              if(nullptr == called_function) { continue; }
+              res.push_back(called_function);
+            }
+          }
+          return res;
         }
 
         /* ------------------------------------------------------------------------------------
@@ -100,8 +140,15 @@ namespace {
             return "";
         }   // end demangle()
 
-        void print_native_map(std::unordered_map<Function*,std::vector<Function*> map){
-          errs() << "Calling print_native_map()"
+        void print_native_map(std::unordered_map<Function*,std::vector<Function*>> map){
+          errs() << "Calling print_native_map()" << "\n";
+          for(auto pair : map){
+            errs() << "The function " << pair.first->getName() << " calls " << "\n";
+            for(auto e : pair.second){
+              errs() << e->getName() << "\n"; 
+            }
+            errs() << "---END---" << "\n";
+          }
           
         }
 
