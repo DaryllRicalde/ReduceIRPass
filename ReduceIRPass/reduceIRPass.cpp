@@ -36,33 +36,47 @@ namespace {
           // iterate through every Function in the Module
           std::unordered_map<Function*, std::vector<Function*>> calls;
           std::vector<Function*> vec;
-          std::string prefix = "std::"    // for finding STL functions
-          for(auto &Func : M){
+          std::string prefix = "std::";    // for finding STL functions
+          for(auto& Func : M){
             StringRef name = Func.getName();
             // name.str() -> get contents of StringRef object as a string
             if(!name.str().empty()){
-                // errs() << "Mangled name: " << name << "\n";
-                std::string demangled_name = demangle(name.str());
-                if(demangled_name == "") { errs() << "Empty demangled name returned!" << "\n"; }
-                if(demangled_name.starts_with(prefix)){
-                  vec.push_back(&Func);
-                }
-            //     errs() << "Demangled name: " << demangled_name << "\n";
-            //     // Func.setName(demangled_name);
-            //     // errs() << "Check if the function's name has been set to demangled version: " << Func.getName() << "\n";
-            //     // errs() << "-------------------------------------------------" << "\n";
-            // }
+              std::string demangled_name = demangle(name.str());
+              if(demangled_name == "") { errs() << "Empty demangled name returned!" << "\n"; }
+              if(demangled_name.rfind(prefix,0) == 0) {  // check if demangled name starts with "std::" prefix indicating a STL function
+                for(auto &BB : Func){
+                  for(auto &Ins : BB){
+                    // check which other Functions this Function calls
+                    // If this is a call instruction, then CB will be not null
+                    auto *CB = dyn_cast<CallBase>(&Ins);
+                    if(nullptr == CB) { continue; }
 
-            // for(auto &BB : Func){
-            //   for(auto &Ins : BB){
+                    // Else, if CB is a direct function call then DirectInvoc will not be null
+                    auto DirectInvoc = CB->getCalledFunction();
+                    if(nullptr == DirectInvoc) { continue; }
+                    vec.push_back(DirectInvoc);
+                  }
+                } 
+              }   
+            }
+          }   // end Module loop
 
-            //   }
-            // }
-          }
-          delete_chain(vec);
+            print(vec);
+            // delete_chain(vec);
             return true;
+        }   // end runOnModule()
+
+        void delete_chain(std::vector<Function*> vec){
+          errs() << "Calling delete_chain()" << "\n";
+          for(auto F : vec){
+            F->replaceAllUsesWith(UndefValue::get(F->getType()));
+            F->eraseFromParent();
+          }
         }
 
+        /* ------------------------------------------------------------------------------------
+          HELPER FUNCTIONS
+        -------------------------------------------------------------------------------------*/ 
         // Demangle function names
         std::string demangle(const std::string &name){
             int status = -1;        // some arbitrary value to eliminate the compiler warning
@@ -82,24 +96,15 @@ namespace {
             return "";
         }   // end demangle()
 
-        void delete_chain(std::vector<Function*> vec){
-          errs() << "Calling delete_chain()" << "\n";
-          for(auto F : vec){
-            F->replaceAllUsesWith(UndefValue::get(F->getType()));
-            F->eraseFromParent();
-          }
-
-        }
-
-        /* ------------------------------------------------------------------------------------
-          HELPER FUNCTIONS
-        -------------------------------------------------------------------------------------*/ 
         void print(std::vector<Function*> vec){
           errs() << "Calling print() " << "\n";
           for(auto F : vec){
-            errs() << "Function: " << F->getName() << "\n";
+            StringRef name = F->getName();
+            std::string demangled = demangle(name.str());
+            errs() << "Function: " << demangled << "\n";
           }
         }
+
     }; // end struct
 } // end anonymous namespace
 
